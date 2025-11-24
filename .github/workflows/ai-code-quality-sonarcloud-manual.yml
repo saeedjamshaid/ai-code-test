@@ -28,7 +28,7 @@ jobs:
       - name: Install project and analysis deps
         run: |
           npm ci
-          npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin semgrep ts-node typescript typhonjs-escomplex sonarqube-scanner
+          npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin semgrep ts-node typescript typhonjs-escomplex sonarqube-scanner glob
 
       - name: TypeScript type-check
         run: npx tsc --noEmit
