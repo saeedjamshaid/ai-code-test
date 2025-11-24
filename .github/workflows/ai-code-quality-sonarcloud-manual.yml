@@ -74,7 +74,7 @@ jobs:
       - name: Run scoring script (ts-node)
         run: |
           # Make sure tools/score.ts exists (see previous template). This writes composite_score.txt & score_report.json
-          npx ts-node tools/score.ts
+          npx ts-node --esm --loader ts-node/esm tools/score.ts
 
       - name: Upload composite score artifact
         uses: actions/upload-artifact@v4
