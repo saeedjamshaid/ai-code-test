@@ -1,74 +1,125 @@
-name: AI Code Quality (Manual)
+name: AI Code Quality - SonarCloud (Manual)
 
+# Manual runs only
 on:
   workflow_dispatch:
 
 jobs:
-  analyze:
+  quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      SONAR_HOST: https://sonarcloud.io
+      SONAR_ORG: ${{ secrets.SONAR_ORG }}
+      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
 
     steps:
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '18'
+          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm install
-
-      # ---------------------------------------
-      # Build whole project (src + tools)
-      # ---------------------------------------
-      - name: Compile TypeScript
+      - name: Install project & analysis dependencies
         run: |
+          # install project deps
+          npm ci
+          # analysis tools (dev-only). add/remove as needed.
+          npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin \
+            typhonjs-escomplex semgrep typescript
+
+      - name: TypeScript compile (build project -> dist)
+        run: |
+          # compile whole project (assumes tsconfig.json configured with outDir: "dist" or similar)
           npx tsc -p tsconfig.json
 
-      # ---------------------------------------
-      # Run ESLint
-      # ---------------------------------------
-      - name: Run ESLint
+      - name: Run tests (Jest) with coverage
         run: |
-          npx eslint src --format json --output-file eslint-report.json || true
+          # produce coverage/coverage-summary.json and coverage/lcov.info
+          npx jest --coverage --coverageReporters=json-summary --coverageReporters=lcov || true
 
-      # ---------------------------------------
-      # Run Semgrep
-      # ---------------------------------------
-      - name: Run Semgrep
+      - name: Run ESLint (JSON)
         run: |
-          pip install semgrep
-          semgrep scan --config p/ci --json --output semgrep-report.json || true
+          npx eslint "src/**/*.{ts,tsx,js,jsx}" -f json -o eslint.json || true
 
-      # ---------------------------------------
-      # Run SonarCloud scanner
-      # ---------------------------------------
-      - name: Download SonarCloud scanner
+      - name: Run Semgrep (SAST)
         run: |
-          mkdir -p .scanner
-          curl -sSLo .scanner/scanner.zip https://sonarcloud.io/static/cpp/build-wrapper-linux-x86.zip
-          unzip -q .scanner/scanner.zip -d .scanner
-          chmod +x .scanner/sonar-scanner-*/bin/sonar-scanner
+          # semgrep CLI: adjust config if you have custom rules
+          npx semgrep --config=p/ci --json --output semgrep.json || true
 
-      - name: Run SonarCloud analysis
+      - name: Run escomplex (cyclomatic complexity)
+        run: |
+          npx typhonjs-escomplex -f json -o escomplex.json "src/**/*.ts" || true
+
+      - name: Collect files/lines info (no extra deps)
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          function walk(dir, exts, files=[]) {
+            if (!fs.existsSync(dir)) return files;
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) walk(full, exts, files);
+              else {
+                for (const e of exts) if (full.endsWith(e)) { files.push(full); break; }
+              }
+            }
+            return files;
+          }
+          const files = walk('src', ['.ts','.tsx','.js','.jsx']);
+          let total = 0;
+          for (const f of files) {
+            try { total += fs.readFileSync(f,'utf8').split('\\n').length; } catch(e){}
+          }
+          fs.writeFileSync('files_info.json', JSON.stringify({ files: files.length, total_lines: total }));
+          console.log('files_info.json written -', files.length, 'files,', total, 'lines');
+          NODE
+
+      - name: SonarCloud Scan (official action)
+        uses: sonarsource/sonarcloud-github-action@v2
+        with:
+          args: >
+            -Dsonar.organization=${{ secrets.SONAR_ORG }}
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+            -Dsonar.sources=src
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Fetch SonarCloud measures (API)
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          .scanner/sonar-scanner-*/bin/sonar-scanner \
-            -Dsonar.organization=${{ secrets.SONAR_ORG }} \
-            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }} \
-            -Dsonar.sources=src \
-            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-            -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.token=${{ secrets.SONAR_TOKEN }}
+          METRICS="coverage,security_rating,vulnerabilities,code_smells,duplicated_lines_density,complexity,alert_status,reliability_rating,maintainability_rating"
+          curl -s -u "${SONAR_TOKEN}:" "https://sonarcloud.io/api/measures/component?component=${{ secrets.SONAR_PROJECT_KEY }}&metricKeys=${METRICS}" -o sonar_metrics.json || true
+          echo "Saved sonar_metrics.json"
 
-      # ---------------------------------------
-      # Run scoring script
-      # ---------------------------------------
-      - name: Run AI code quality scorer
+      - name: Run compiled scoring script
         run: |
-          node dist/tools/score.js \
-            --eslint eslint-report.json \
-            --semgrep semgrep-report.json \
-            --source src
+          if [ -f dist/tools/score.js ]; then
+            node dist/tools/score.js
+          else
+            echo "dist/tools/score.js not found. Listing dist/ for debug:"
+            ls -R dist || true
+            exit 1
+          fi
+
+      - name: Upload composite score artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-composite-score
+          path: composite_score.txt
+
+      - name: Print composite score
+        run: |
+          if [ -f composite_score.txt ]; then
+            echo "Composite Score: $(cat composite_score.txt)"
+          else
+            echo "No composite_score.txt produced"
+          fi
