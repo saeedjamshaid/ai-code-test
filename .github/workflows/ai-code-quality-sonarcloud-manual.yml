@@ -1,6 +1,6 @@
 name: AI Code Quality - SonarCloud (Manual)
 
-# Only manual runs (and workflow_dispatch) — no PR triggers
+# Manual runs only
 on:
   workflow_dispatch:
 
@@ -28,15 +28,16 @@ jobs:
       - name: Install project and analysis deps
         run: |
           npm ci
-          npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin semgrep ts-node typescript typhonjs-escomplex sonarqube-scanner glob
+          # install analysis tools + small helper dependency 'glob'
+          npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin semgrep typescript ts-node typhonjs-escomplex sonarqube-scanner glob
 
       - name: TypeScript type-check
         run: npx tsc --noEmit
 
       - name: Run tests (Jest) with coverage
         run: |
-          # produce coverage/coverage-summary.json
-          npx jest --coverage --coverageReporters=json-summary || true
+          # produce coverage/coverage-summary.json and coverage/lcov.info
+          npx jest --coverage --coverageReporters=json-summary --coverageReporters=lcov || true
 
       - name: Run ESLint (JSON)
         run: |
@@ -51,15 +52,22 @@ jobs:
           npx typhonjs-escomplex -f json -o escomplex.json "src/**/*.ts" || true
 
       - name: Collect files/lines info
+        # uses 'glob' installed above
         run: |
-          node -e "const fs=require('fs'),glob=require('glob'); const files=glob.sync('src/**/*.{ts,tsx,js,jsx}'); let total=0; files.forEach(f=>{const s=fs.readFileSync(f,'utf8'); total+=s.split('\n').length}); fs.writeFileSync('files_info.json', JSON.stringify({files:files.length, total_lines: total})); console.log('files_info.json written')"
+          node -e "const fs=require('fs'), glob=require('glob'); const patterns=['src/**/*.{ts,tsx,js,jsx}']; let files=[]; patterns.forEach(p=> files = files.concat(glob.sync(p,{nodir:true}))); let total=0; files.forEach(f=>{try{total += fs.readFileSync(f,'utf8').split('\\n').length}catch(e){}}); fs.writeFileSync('files_info.json', JSON.stringify({files: files.length, total_lines: total})); console.log('files_info.json written -', files.length, 'files,', total, 'lines');"
 
       - name: Run SonarCloud scanner
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           # SonarCloud scanner invocation (adapt if you have sonar-project.properties)
-          npx sonarqube-scanner             -Dsonar.organization=${{ secrets.SONAR_ORG }}             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}             -Dsonar.sources=src             -Dsonar.host.url=https://sonarcloud.io             -Dsonar.login=${{ secrets.SONAR_TOKEN }}             -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
+          npx sonarqube-scanner \
+            -Dsonar.organization=${{ secrets.SONAR_ORG }} \
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }} \
+            -Dsonar.sources=src \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
+            -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
 
       - name: Fetch Sonar measures (API)
         env:
@@ -71,10 +79,19 @@ jobs:
           curl -s -u "${SONAR_TOKEN}:" "${SONAR_HOST}/api/measures/component?component=${SONAR_PROJECT_KEY}&metricKeys=${METRICS}" -o sonar_metrics.json || true
           echo "Saved sonar_metrics.json"
 
-      - name: Run scoring script (ts-node)
+      - name: Compile scoring script to JS (CommonJS)
         run: |
-          # Make sure tools/score.ts exists (see previous template). This writes composite_score.txt & score_report.json
-          npx ts-node --esm --loader ts-node/esm tools/score.ts
+          # compile tools/score.ts -> tools/dist/score.js (flat output)
+          npx tsc --module CommonJS --target ES2020 --rootDir tools --outDir tools/dist --esModuleInterop true
+
+      - name: Run compiled scoring script
+        run: |
+          if [ -f tools/dist/score.js ]; then
+            node tools/dist/score.js
+          else
+            echo "Compiled score.js not found at tools/dist/score.js"
+            exit 1
+          fi
 
       - name: Upload composite score artifact
         uses: actions/upload-artifact@v4
