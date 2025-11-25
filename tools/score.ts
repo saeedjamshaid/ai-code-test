@@ -54,7 +54,6 @@ function normSemgrep(semgrepJson: any): number {
 function normComplexity(escomplexJson: any): number {
   if (!escomplexJson) return 100;
   let vals: number[] = [];
-  // flexible parsing
   const collect = (obj: any) => {
     if (!obj || typeof obj !== "object") return;
     for (const k of Object.keys(obj)) {
@@ -84,26 +83,20 @@ function readSonarMetrics(sonarJson: any) {
 }
 
 function normFromSonarMeasure(measures: Record<string, any>) {
-  // map a few Sonar measures to our norms (0..100)
   const norms: Partial<Record<string, number>> = {};
-  // coverage from Sonar: 'coverage' value is percentage
   norms.correctness = measures.coverage ? Math.round(Number(measures.coverage)) : 0;
 
-  // vulnerabilities: Sonar 'vulnerabilities' is a count -> penalize
   const vulns = Number(measures.vulnerabilities ?? 0);
-  norms.security = Math.max(0, 100 - vulns * 25); // tune multiplier
+  norms.security = Math.max(0, 100 - vulns * 25);
 
-  // code smells -> penalize
   const smells = Number(measures.code_smells ?? 0);
-  norms.maintainability = Math.max(0, 100 - smells * 0.2); // small penalty
+  norms.maintainability = Math.max(0, 100 - smells * 0.2);
 
-  // duplication in percent => map to duplication norm
   const dup = Number(measures.duplicated_lines_density ?? 0);
   norms.duplication = Math.max(0, Math.round(100 - dup));
 
-  // complexity (sonar's complexity measure is total complexity) -> convert heuristically
   const complexity = Number(measures.complexity ?? 0);
-  norms.maintainability = Math.round(Math.max(0, Math.min(100, norms.maintainability ?? 100 - complexity * 0.05)));
+  norms.maintainability = Math.round(Math.max(0, Math.min(100, (norms.maintainability ?? 100) - complexity * 0.05)));
 
   return norms as Record<string, number>;
 }
@@ -132,23 +125,22 @@ function main() {
   // norms from individual tools
   const norms: Norms = {
     correctness: normCoverage(coverage),
-    security: normSemgrep(semgrepJson), // initial security from semgrep
+    security: normSemgrep(semgrepJson),
     maintainability: normComplexity(escomplexJson),
     readability: normESLint(eslintJson, totalLines),
-    robustness: 90, // placeholder, recommend adding semgrep rules for missing try/catch / null checks
+    robustness: 90, // placeholder
     duplication: 95,
     performance: 85,
     consistency: 90,
   };
 
-  // incorporate Sonar measures (blending)
+  // incorporate Sonar measures
   if (sonarMetricsRaw) {
     const sonarMap = readSonarMetrics(sonarMetricsRaw);
     const sonarNorms = normFromSonarMeasure(sonarMap);
-    // merge/blend sonarNorms into norms with conservative approach (take min where sonar indicates worse)
     for (const k of Object.keys(sonarNorms)) {
       const val = sonarNorms[k];
-      if (typeof val === "number") norms[k] = Math.round(((norms[k] ?? 0) + val) / 2); // simple average blend
+      if (typeof val === "number") norms[k] = Math.round(((norms[k] ?? 0) + val) / 2);
     }
   }
 
@@ -164,12 +156,23 @@ function main() {
   };
 
   const score = computeComposite(norms, weights);
-  const out = { score, norms, weights, timestamp: new Date().toISOString() };
 
+  // Write outputs
   fs.writeFileSync("composite_score.txt", String(score), "utf8");
-  fs.writeFileSync("score_report.json", JSON.stringify(out, null, 2), "utf8");
+
+  // Detailed per-category breakdown for workflow artifact
+  const breakdown: Record<string, number> = {};
+  for (const k of Object.keys(weights)) {
+    breakdown[k] = norms[k] ?? 0;
+  }
+  fs.writeFileSync("score_breakdown.json", JSON.stringify(breakdown, null, 2), "utf8");
+
+  // Full report for debugging/history
+  const fullReport = { score, norms, weights, timestamp: new Date().toISOString() };
+  fs.writeFileSync("score_report.json", JSON.stringify(fullReport, null, 2), "utf8");
+
   console.log("Composite Score:", score);
-  console.log("Norms:", norms);
+  console.log("Per-category breakdown:", breakdown);
 }
 
 main();

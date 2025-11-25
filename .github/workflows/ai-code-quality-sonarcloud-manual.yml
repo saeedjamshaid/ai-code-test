@@ -1,6 +1,5 @@
 name: AI Code Quality - SonarCloud (Manual)
 
-# Manual runs only
 on:
   workflow_dispatch:
 
@@ -27,36 +26,26 @@ jobs:
 
       - name: Install project & analysis dependencies
         run: |
-          # install project deps
           npm ci
-          # analysis tools (dev-only). add/remove as needed.
           npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin \
             typhonjs-escomplex semgrep typescript
 
       - name: TypeScript compile (build project -> dist)
-        run: |
-          # compile whole project (assumes tsconfig.json configured with outDir: "dist" or similar)
-          npx tsc -p tsconfig.json
+        run: npx tsc -p tsconfig.json
 
       - name: Run tests (Jest) with coverage
-        run: |
-          # produce coverage/coverage-summary.json and coverage/lcov.info
-          npx jest --coverage --coverageReporters=json-summary --coverageReporters=lcov || true
+        run: npx jest --coverage --coverageReporters=json-summary --coverageReporters=lcov || true
 
       - name: Run ESLint (JSON)
-        run: |
-          npx eslint "src/**/*.{ts,tsx,js,jsx}" -f json -o eslint.json || true
+        run: npx eslint "src/**/*.{ts,tsx,js,jsx}" -f json -o eslint.json || true
 
       - name: Run Semgrep (SAST)
-        run: |
-          # semgrep CLI: adjust config if you have custom rules
-          npx semgrep --config=p/ci --json --output semgrep.json || true
+        run: npx semgrep --config=p/ci --json --output semgrep.json || true
 
       - name: Run escomplex (cyclomatic complexity)
-        run: |
-          npx typhonjs-escomplex -f json -o escomplex.json "src/**/*.ts" || true
+        run: npx typhonjs-escomplex -f json -o escomplex.json "src/**/*.ts" || true
 
-      - name: Collect files/lines info (no extra deps)
+      - name: Collect files/lines info
         run: |
           node - <<'NODE'
           const fs = require('fs');
@@ -66,17 +55,13 @@ jobs:
             for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
               const full = path.join(dir, entry.name);
               if (entry.isDirectory()) walk(full, exts, files);
-              else {
-                for (const e of exts) if (full.endsWith(e)) { files.push(full); break; }
-              }
+              else { for (const e of exts) if (full.endsWith(e)) { files.push(full); break; } }
             }
             return files;
           }
           const files = walk('src', ['.ts','.tsx','.js','.jsx']);
           let total = 0;
-          for (const f of files) {
-            try { total += fs.readFileSync(f,'utf8').split('\\n').length; } catch(e){}
-          }
+          for (const f of files) { try { total += fs.readFileSync(f,'utf8').split('\n').length; } catch(e){} }
           fs.writeFileSync('files_info.json', JSON.stringify({ files: files.length, total_lines: total }));
           console.log('files_info.json written -', files.length, 'files,', total, 'lines');
           NODE
@@ -92,7 +77,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      - name: Fetch SonarCloud measures (API)
+      - name: Fetch SonarCloud measures
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
@@ -100,78 +85,36 @@ jobs:
           curl -s -u "${SONAR_TOKEN}:" "https://sonarcloud.io/api/measures/component?component=${{ secrets.SONAR_PROJECT_KEY }}&metricKeys=${METRICS}" -o sonar_metrics.json || true
           echo "Saved sonar_metrics.json"
 
-      - name: Ensure deps & Compile (verbose)
+      - name: Run compiled scoring script
         run: |
-          echo "=== node/npm versions ==="
-          node -v
-          npm -v
-
-          echo "=== Install project deps (npm ci) ==="
-          # npm ci will install devDependencies as long as package-lock.json exists and includes them
-          npm ci
-
-          echo "=== Check tsc presence & version ==="
-          npx tsc -v
-
-          echo "=== Show root tsconfig.json (for debugging) ==="
-          if [ -f tsconfig.json ]; then
-            sed -n '1,200p' tsconfig.json
-          else
-            echo "No tsconfig.json at repo root!"
-          fi
-
-          echo "=== Running tsc -p tsconfig.json (explicit, no silent) ==="
-          # This will show compilation errors in the logs if any
-          npx tsc -p tsconfig.json
-          tsc_exit=$?
-          echo "tsc exit code: $tsc_exit"
-
-          echo "=== List dist/ contents (if any) ==="
-          if [ -d dist ]; then
-            ls -la dist || true
-            echo "=== Dist tree ==="
-            ls -R dist || true
-          else
-            echo "dist directory does not exist"
-          fi
-
-          # fail the job explicitly if tsc failed (optional, remove '|| true' if you want)
-          if [ $tsc_exit -ne 0 ]; then
-            echo "TypeScript compilation failed (tsc exit code $tsc_exit). Failing the job."
-            exit $tsc_exit
-          fi
-
-      - name: Run compiled scoring script (robust path detection)
-        run: |
-          # possible compiled paths
-          if [ -f dist/tools/score.js ]; then
-            echo "Running dist/tools/score.js"
-            node dist/tools/score.js
-          elif [ -f dist/tools/score/index.js ]; then
-            echo "Running dist/tools/score/index.js"
-            node dist/tools/score/index.js
-          elif [ -f tools/dist/score.js ]; then
-            echo "Running tools/dist/score.js"
-            node tools/dist/score.js
-          else
-            echo "Compiled scorer not found. Dist listing for debug:"
-            ls -R dist || true
-            ls -R tools || true
-            echo "Failing because compiled scorer cannot be found."
+          SCORE_JS="dist/tools/score.js"
+          if [ ! -f "$SCORE_JS" ]; then
+            echo "$SCORE_JS not found. Listing dist/tools:"
+            ls -R dist/tools || true
             exit 1
           fi
 
+          # Run scorer
+          node $SCORE_JS
 
-      - name: Upload composite score artifact
+          # Expected outputs:
+          # - composite_score.txt
+          # - score_breakdown.json (per-category scores)
+
+      - name: Upload score artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ai-composite-score
-          path: composite_score.txt
+          name: ai-code-quality-scores
+          path: |
+            composite_score.txt
+            score_breakdown.json
 
-      - name: Print composite score
+      - name: Print composite + detailed breakdown
         run: |
           if [ -f composite_score.txt ]; then
             echo "Composite Score: $(cat composite_score.txt)"
-          else
-            echo "No composite_score.txt produced"
+          fi
+          if [ -f score_breakdown.json ]; then
+            echo "Detailed Category Breakdown:"
+            cat score_breakdown.json
           fi
