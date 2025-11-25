@@ -79,10 +79,25 @@ jobs:
           curl -s -u "${SONAR_TOKEN}:" "${SONAR_HOST}/api/measures/component?component=${SONAR_PROJECT_KEY}&metricKeys=${METRICS}" -o sonar_metrics.json || true
           echo "Saved sonar_metrics.json"
 
-      - name: Compile scoring script to JS (CommonJS)
+      - name: Compile scoring script to JS (CommonJS, isolated)
         run: |
-          # compile tools/score.ts -> tools/dist/score.js (flat output)
-          npx tsc --module CommonJS --target ES2020 --rootDir tools --outDir tools/dist --esModuleInterop true
+          cat > tools/tsconfig.build.json <<'JSON'
+          {
+            "compilerOptions": {
+              "module": "CommonJS",
+              "target": "ES2020",
+              "outDir": "tools/dist",
+              "rootDir": "tools",
+              "esModuleInterop": true,
+              "skipLibCheck": true,
+              "resolveJsonModule": true,
+              "strict": false
+            },
+            "include": ["tools/**/*.ts"]
+          }
+          JSON
+          # Compile only files under tools/ using the temporary config
+          npx tsc -p tools/tsconfig.build.json
 
       - name: Run compiled scoring script
         run: |
