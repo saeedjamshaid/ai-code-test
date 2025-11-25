@@ -1,119 +1,74 @@
-name: AI Code Quality - SonarCloud (Manual)
+name: AI Code Quality (Manual)
 
-# Manual runs only
 on:
   workflow_dispatch:
 
 jobs:
-  quality:
+  analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      SONAR_HOST: https://sonarcloud.io
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SONAR_ORG: ${{ secrets.SONAR_ORG }}
-      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Use Node.js
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: 18
 
-      - name: Install project and analysis deps
+      - name: Install dependencies
+        run: npm install
+
+      # ---------------------------------------
+      # Build whole project (src + tools)
+      # ---------------------------------------
+      - name: Compile TypeScript
         run: |
-          npm ci
-          # install analysis tools + small helper dependency 'glob'
-          npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin semgrep typescript ts-node typhonjs-escomplex sonarqube-scanner glob
+          npx tsc -p tsconfig.json
 
-      - name: TypeScript type-check
-        run: npx tsc --noEmit
-
-      - name: Run tests (Jest) with coverage
+      # ---------------------------------------
+      # Run ESLint
+      # ---------------------------------------
+      - name: Run ESLint
         run: |
-          # produce coverage/coverage-summary.json and coverage/lcov.info
-          npx jest --coverage --coverageReporters=json-summary --coverageReporters=lcov || true
+          npx eslint src --format json --output-file eslint-report.json || true
 
-      - name: Run ESLint (JSON)
+      # ---------------------------------------
+      # Run Semgrep
+      # ---------------------------------------
+      - name: Run Semgrep
         run: |
-          npx eslint "src/**/*.{ts,tsx,js,jsx}" -f json -o eslint.json || true
+          pip install semgrep
+          semgrep scan --config p/ci --json --output semgrep-report.json || true
 
-      - name: Run Semgrep (SAST)
+      # ---------------------------------------
+      # Run SonarCloud scanner
+      # ---------------------------------------
+      - name: Download SonarCloud scanner
         run: |
-          npx semgrep --config=p/ci --json --output semgrep.json || true
+          mkdir -p .scanner
+          curl -sSLo .scanner/scanner.zip https://sonarcloud.io/static/cpp/build-wrapper-linux-x86.zip
+          unzip -q .scanner/scanner.zip -d .scanner
+          chmod +x .scanner/sonar-scanner-*/bin/sonar-scanner
 
-      - name: Run escomplex (cyclomatic complexity)
-        run: |
-          npx typhonjs-escomplex -f json -o escomplex.json "src/**/*.ts" || true
-
-      - name: Collect files/lines info
-        # uses 'glob' installed above
-        run: |
-          node -e "const fs=require('fs'), glob=require('glob'); const patterns=['src/**/*.{ts,tsx,js,jsx}']; let files=[]; patterns.forEach(p=> files = files.concat(glob.sync(p,{nodir:true}))); let total=0; files.forEach(f=>{try{total += fs.readFileSync(f,'utf8').split('\\n').length}catch(e){}}); fs.writeFileSync('files_info.json', JSON.stringify({files: files.length, total_lines: total})); console.log('files_info.json written -', files.length, 'files,', total, 'lines');"
-
-      - name: Run SonarCloud scanner
+      - name: Run SonarCloud analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          # SonarCloud scanner invocation (adapt if you have sonar-project.properties)
-          npx sonarqube-scanner \
+          .scanner/sonar-scanner-*/bin/sonar-scanner \
             -Dsonar.organization=${{ secrets.SONAR_ORG }} \
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }} \
             -Dsonar.sources=src \
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
             -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
-            -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
+            -Dsonar.token=${{ secrets.SONAR_TOKEN }}
 
-      - name: Fetch Sonar measures (API)
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST: https://sonarcloud.io
-          SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+      # ---------------------------------------
+      # Run scoring script
+      # ---------------------------------------
+      - name: Run AI code quality scorer
         run: |
-          METRICS="coverage,security_rating,vulnerabilities,code_smells,duplicated_lines_density,complexity,alert_status,reliability_rating,maintainability_rating"
-          curl -s -u "${SONAR_TOKEN}:" "${SONAR_HOST}/api/measures/component?component=${SONAR_PROJECT_KEY}&metricKeys=${METRICS}" -o sonar_metrics.json || true
-          echo "Saved sonar_metrics.json"
-
-      - name: Compile scoring script to JS (CommonJS, isolated)
-        run: |
-          cat > tools/tsconfig.build.json <<'JSON'
-          {
-            "compilerOptions": {
-              "module": "CommonJS",
-              "target": "ES2020",
-              "outDir": "tools/dist",
-              "rootDir": "tools",
-              "esModuleInterop": true,
-              "skipLibCheck": true,
-              "resolveJsonModule": true,
-              "strict": false
-            },
-            "include": ["tools/**/*.ts"]
-          }
-          JSON
-          # Compile only files under tools/ using the temporary config
-          npx tsc -p tools/tsconfig.build.json
-
-      - name: Run compiled scoring script
-        run: |
-          if [ -f tools/dist/score.js ]; then
-            node tools/dist/score.js
-          else
-            echo "Compiled score.js not found at tools/dist/score.js"
-            exit 1
-          fi
-
-      - name: Upload composite score artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-composite-score
-          path: composite_score.txt
-
-      - name: Print score to workflow log
-        run: |
-          if [ -f composite_score.txt ]; then echo "Composite Score: $(cat composite_score.txt)"; else echo "No composite_score.txt found"; fi
+          node dist/tools/score.js \
+            --eslint eslint-report.json \
+            --semgrep semgrep-report.json \
+            --source src
