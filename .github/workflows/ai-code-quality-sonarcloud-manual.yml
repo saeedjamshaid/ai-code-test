@@ -28,7 +28,8 @@ jobs:
         run: |
           npm ci
           npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin \
-            typhonjs-escomplex semgrep typescript
+            typhonjs-escomplex typescript
+          # removed semgrep from npm installs because Semgrep is installed/run via the official action (or via pipx/docker)
 
       - name: TypeScript compile (build project -> dist)
         run: npx tsc -p tsconfig.json
@@ -39,8 +40,14 @@ jobs:
       - name: Run ESLint (JSON)
         run: npx eslint "src/**/*.{ts,tsx,js,jsx}" -f json -o eslint.json || true
 
-      - name: Run Semgrep (SAST)
-        run: npx semgrep --config=p/ci --json --output semgrep.json || true
+      - name: Run Semgrep (SAST) — official action
+        # Official Semgrep action will install and run Semgrep (no need to install with npm)
+        uses: returntocorp/semgrep-action@v1
+        continue-on-error: true
+        with:
+          config: 'p/ci'
+          output: 'semgrep.json'
+          format: 'json'
 
       - name: Run escomplex (cyclomatic complexity)
         run: npx typhonjs-escomplex -f json -o escomplex.json "src/**/*.ts" || true
