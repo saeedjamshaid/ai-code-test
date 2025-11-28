@@ -117,6 +117,7 @@ jobs:
           path: |
             composite_score.txt
             score_breakdown.json
+            score_report.json
 
       - name: Print composite + detailed breakdown
         run: |
