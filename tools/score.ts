@@ -84,19 +84,28 @@ function readSonarMetrics(sonarJson: any) {
 
 function normFromSonarMeasure(measures: Record<string, any>) {
   const norms: Partial<Record<string, number>> = {};
-  norms.correctness = measures.coverage ? Math.round(Number(measures.coverage)) : 0;
 
-  const vulns = Number(measures.vulnerabilities ?? 0);
-  norms.security = Math.max(0, 100 - vulns * 25);
+  // const vulns = Number(measures.vulnerabilities ?? 0);
+  // norms.security = Math.max(0, 100 - vulns * 25);
 
+  console.log("[Sonar] code_smells:", measures.code_smells);
   const smells = Number(measures.code_smells ?? 0);
   norms.maintainability = Math.max(0, 100 - smells * 0.2);
+  
+  console.log("[Sonar] sqale_index (technical_debt):", measures.sqale_index);
 
+  console.log("[Sonar] complexity:", measures.complexity);
+  const complexity = Number(measures.complexity ?? 0);
+  norms.performance = Math.max(Math.max(0, 100 - complexity));
+
+  console.log("[Sonar] duplicated_lines_density:", measures.duplicated_lines_density);
   const dup = Number(measures.duplicated_lines_density ?? 0);
   norms.duplication = Math.max(0, Math.round(100 - dup));
+  
+  console.log("[Sonar] bugs:", measures.bugs);
+  console.log("[Sonar] reliability_remediation_effort:", measures.reliability_remediation_effort);
 
-  const complexity = Number(measures.complexity ?? 0);
-  norms.maintainability = Math.round(Math.max(0, Math.min(100, (norms.maintainability ?? 100) - complexity * 0.05)));
+  // reliability: -1,
 
   return norms as Record<string, number>;
 }
@@ -124,14 +133,20 @@ function main() {
 
   // norms from individual tools
   const norms: Norms = {
-    correctness: normCoverage(coverage),
+    // Correctness
+    unitTestPassRate: -1,
+    compilation:0,
+    autofixSuccessRate:0,
+    // Efficiency
+    tokenusage:0,
+    timeToFirstWorkingSolution:0,
+    fixAttempts:0,
+    // Quality
     security: normSemgrep(semgrepJson),
-    maintainability: normComplexity(escomplexJson),
-    readability: normESLint(eslintJson, totalLines),
-    robustness: 90, // placeholder
-    duplication: 95,
-    performance: 85,
-    consistency: 90,
+    reliability: -1,
+    maintainability: -1,
+    duplication:-1,
+    performance: -1
   };
 
   // incorporate Sonar measures
