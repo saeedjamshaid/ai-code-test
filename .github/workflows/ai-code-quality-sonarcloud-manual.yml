@@ -118,6 +118,7 @@ jobs:
             composite_score.txt
             score_breakdown.json
             score_report.json
+            sonar_metrics.json
 
       - name: Print composite + detailed breakdown
         run: |
@@ -131,4 +132,8 @@ jobs:
           if [ -f score_report.json ]; then
             echo "Complete Score Card:"
             cat score_report.json
+          fi
+          if [ -f sonar_metrics.json ]; then
+            echo "sonar metrics:"
+            cat sonar_metrics.json
           fi
