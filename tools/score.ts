@@ -135,17 +135,17 @@ function main() {
   const norms: Norms = {
     // Correctness
     unitTestPassRate: -1,
-    compilation:0,
-    autofixSuccessRate:0,
+    compilation: 0,
+    autofixSuccessRate: 0,
     // Efficiency
-    tokenusage:0,
-    timeToFirstWorkingSolution:0,
-    fixAttempts:0,
+    tokenusage: 0,
+    timeToFirstWorkingSolution: 0,
+    fixAttempts: 0,
     // Quality
     security: normSemgrep(semgrepJson),
     reliability: -1,
     maintainability: -1,
-    duplication:-1,
+    duplication: -1,
     performance: -1
   };
 
@@ -159,31 +159,54 @@ function main() {
     }
   }
 
-  const weights: Weights = {
-    correctness: 25,
-    security: 20,
-    maintainability: 15,
-    readability: 10,
-    robustness: 10,
-    duplication: 6,
-    performance: 6,
-    consistency: 8
+  const categoryWeights: Record<string, Weights> = {
+    correctness: {
+      unitTestPassRate: 40,
+      compilation: 30,
+      autofixSuccessRate: 30
+    },
+    quality: {
+      security: 25,
+      reliability: 20,
+      maintainability: 20,
+      duplication: 20,
+      performance: 15
+    },
+    efficiency: {
+      tokenusage: 35,
+      timeToFirstWorkingSolution: 35,
+      fixAttempts: 30
+    }
   };
 
-  const score = computeComposite(norms, weights);
+  const categoryScores: Record<string, number> = {};
+  for (const [category, weights] of Object.entries(categoryWeights)) {
+    categoryScores[category] = computeComposite(norms, weights);
+  }
+
+  const categoryCount = Object.keys(categoryWeights).length || 1;
+  const score = Math.round(
+    (Object.values(categoryScores).reduce((sum, val) => sum + val, 0) / categoryCount) * 100
+  ) / 100;
 
   // Write outputs
   fs.writeFileSync("composite_score.txt", String(score), "utf8");
 
   // Detailed per-category breakdown for workflow artifact
-  const breakdown: Record<string, number> = {};
-  for (const k of Object.keys(weights)) {
-    breakdown[k] = norms[k] ?? 0;
-  }
+  const breakdown = {
+    metrics: norms,
+    categories: categoryScores
+  };
   fs.writeFileSync("score_breakdown.json", JSON.stringify(breakdown, null, 2), "utf8");
 
   // Full report for debugging/history
-  const fullReport = { score, norms, weights, timestamp: new Date().toISOString() };
+  const fullReport = {
+    score,
+    norms,
+    categoryWeights,
+    categoryScores,
+    timestamp: new Date().toISOString()
+  };
   fs.writeFileSync("score_report.json", JSON.stringify(fullReport, null, 2), "utf8");
 
   console.log("Composite Score:", score);

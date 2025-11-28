@@ -88,7 +88,9 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          METRICS="coverage,security_rating,vulnerabilities,code_smells,duplicated_lines_density,complexity,alert_status,reliability_rating,maintainability_rating"
+          # Metrics include: coverage, security_rating, vulnerabilities, code_smells, duplicated_lines_density,
+          # complexity (cyclomatic complexity), alert_status, reliability_rating, maintainability_rating
+          METRICS="coverage,security_rating,vulnerabilities,code_smells,duplicated_lines_density,complexity,alert_status,reliability_rating,sqale_index"
           curl -s -u "${SONAR_TOKEN}:" "https://sonarcloud.io/api/measures/component?component=${{ secrets.SONAR_PROJECT_KEY }}&metricKeys=${METRICS}" -o sonar_metrics.json || true
           echo "Saved sonar_metrics.json"
 
@@ -124,4 +126,8 @@ jobs:
           if [ -f score_breakdown.json ]; then
             echo "Detailed Category Breakdown:"
             cat score_breakdown.json
+          fi
+          if [ -f score_report.json ]; then
+            echo "Complete Score Card:"
+            cat score_report.json
           fi
