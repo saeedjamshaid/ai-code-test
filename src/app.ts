@@ -8,6 +8,20 @@ import {
   OrdersController,
 } from '@paypal/paypal-server-sdk';
 
+
+// // insecure-sql.ts
+// import mysql from "mysql";
+// const connection = mysql.createConnection({ /* ... */ });
+
+// function getUserById(userId: string) {
+//   // userId comes from request params — DO NOT concatenate directly
+//   const query = `SELECT * FROM users WHERE id = ${userId}`; // <-- injectable
+//   connection.query(query, (err, results) => {
+//     console.log(results);
+//   });
+// }
+
+
 // Initialize the PayPal client
 const client = new Client({
   clientCredentialsAuthCredentials: {

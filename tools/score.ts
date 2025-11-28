@@ -101,8 +101,11 @@ function normFromSonarMeasure(measures: Record<string, any>) {
   norms.duplication = Math.max(0, Math.round(100 - dup));
   // duplicated_lines_density: %
   
-  norms.reliability = Math.max(0, 100 - (measures.bugs * 0.2));
-  // bugs: #
+  norms.reliability = Math.max(0, 100 - (measures.reliability_rating * 0.2));
+  // reliability_rating: 1 (best) - 5 (worst)
+
+  norms.security = Math.max(0, 100 - (measures.security_rating * 0.2));
+  // security_rating: 1 (best) - 5 (worst)
 
   return norms as Record<string, number>;
 }
@@ -132,14 +135,14 @@ function main() {
   const norms: Norms = {
     // Correctness
     unitTestPassRate: -1,
-    compilation: 0,
-    autofixSuccessRate: 0,
+    compilation: -1,
+    autofixSuccessRate: -1,
     // Efficiency
-    tokenusage: 0,
-    timeToFirstWorkingSolution: 0,
-    fixAttempts: 0,
+    tokenusage: -1,
+    timeToFirstWorkingSolution: -1,
+    fixAttempts: -1,
     // Quality
-    security: normSemgrep(semgrepJson),
+    security: -1,
     reliability: -1,
     maintainability: -1,
     duplication: -1,
