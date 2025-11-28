@@ -119,6 +119,7 @@ jobs:
             score_breakdown.json
             score_report.json
             sonar_metrics.json
+            semgrep.json
 
       - name: Print composite + detailed breakdown
         run: |
@@ -136,4 +137,8 @@ jobs:
           if [ -f sonar_metrics.json ]; then
             echo "sonar metrics:"
             cat sonar_metrics.json
+          fi
+          if [ -f semgrep.json ]; then
+            echo "semgrep metrics:"
+            cat semgrep.json
           fi
