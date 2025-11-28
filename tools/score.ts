@@ -3,6 +3,13 @@ import fs from "fs";
 
 type Norms = Record<string, number>;
 type Weights = Record<string, number>;
+type AgentScoreCard = {
+  autofixSuccessRate?: number;
+  tokenUsage?: number;
+  timeToFirstWorkingSolution?: number;
+  fixAttempts?: number;
+  [key: string]: any;
+};
 
 function safeRead(p: string) {
   try {
@@ -11,6 +18,26 @@ function safeRead(p: string) {
   } catch (e) {
     console.warn("failed to read", p, e);
     return null;
+  }
+}
+
+function applyAgentScoreCard(norms: Norms) {
+  const scoreCard = safeRead("tools/AgentScoreCard.json") as AgentScoreCard | null;
+  if (!scoreCard) return;
+
+  const fieldMap: Record<string, keyof AgentScoreCard> = {
+    autofixSuccessRate: "autofixSuccessRate",
+    tokenusage: "tokenUsage",
+    timeToFirstWorkingSolution: "timeToFirstWorkingSolution",
+    fixAttempts: "fixAttempts"
+  };
+
+  for (const [normKey, cardKey] of Object.entries(fieldMap)) {
+    const raw = scoreCard[cardKey];
+    const val = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isNaN(val)) {
+      norms[normKey] = val;
+    }
   }
 }
 
@@ -86,17 +113,21 @@ function normFromSonarMeasure(measures: Record<string, any>) {
   const norms: Partial<Record<string, number>> = {};
 
   console.log("[Sonar] code_smells:", measures.code_smells);
+  console.log("[Sonar] sqale_index:", measures.sqale_index);
+  console.log("[Sonar] complexity:", measures.complexity);
+  console.log("[Sonar] duplicated_lines_density:", measures.duplicated_lines_density);
+  console.log("[Sonar] reliability_rating:", measures.reliability_rating);
+  console.log("[Sonar] security_rating:", measures.security_rating);
+
   const smells = Number(measures.code_smells ?? 0);
   norms.maintainability = Math.max(0, 100 - (smells * 0.2) - (measures.sqale_index * 0.2));
   // code_smells: #
   // sqale_index: mins
 
-  console.log("[Sonar] complexity:", measures.complexity);
   const complexity = Number(measures.complexity ?? 0);
   norms.performance = Math.max(Math.max(0, 100 - complexity));
   // complexity: mins
 
-  console.log("[Sonar] duplicated_lines_density:", measures.duplicated_lines_density);
   const dup = Number(measures.duplicated_lines_density ?? 0);
   norms.duplication = Math.max(0, Math.round(100 - dup));
   // duplicated_lines_density: %
@@ -148,6 +179,8 @@ function main() {
     duplication: -1,
     performance: -1
   };
+
+  applyAgentScoreCard(norms);
 
   // incorporate Sonar measures
   if (sonarMetricsRaw) {

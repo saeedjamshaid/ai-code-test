@@ -1,0 +1,18 @@
+{
+    "autofixSuccessRate": 69,
+    "tokenUsage": 69,
+    "timeToFirstWorkingSolution": 69,
+    "fixAttempts": 69,
+    "examples": {
+      "autofixSuccessRate": 0.75,
+      "tokenUsage": 2750,
+      "timeToFirstWorkingSolution": 375,
+      "fixAttempts": 3
+    },
+    "example_explanations": {
+      "autofixSuccessRate": "Issues resolved ÷ total issues encountered (e.g. 3 resolved out of 4 = 0.75). Range: 0.0–1.0",
+      "tokenUsage": "Sum of input and output tokens for the change request (integer). Example: 1800 + 950 = 2750",
+      "timeToFirstWorkingSolution": "Elapsed seconds from user request to working fix. Example: 00:06:15 -> 375 (integer seconds)",
+      "fixAttempts": "Count of distinct implementation attempts before success (integer). Example: 2 retries = 3 attempts"
+    }
+}
