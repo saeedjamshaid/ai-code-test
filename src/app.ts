@@ -119,7 +119,8 @@ export async function createOrder(
           {
             referenceId,
             amount: {
-           ount
+              currencyCode,
+              value: amount
             }
           }
         ]

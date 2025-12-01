@@ -72,9 +72,8 @@ function normFromSonarMeasure(measures: Record<string, any>) {
   // code_smells: #
   // sqale_index: mins
 
-  const complexity = Number(measures.complexity ?? 0);
-  norms.performance = Math.max(Math.max(0, 100 - complexity));
-  // complexity: mins
+  norms.performance =  Number(measures.complexity ?? 0);
+  // complexity: branches
 
   const dup = Number(measures.duplicated_lines_density ?? 0);
   norms.duplication = Math.max(0, Math.round(100 - dup));
