@@ -186,7 +186,10 @@ function main(): Norms {
     const sonarNorms = normFromSonarMeasure(sonarMap);
     for (const k of Object.keys(sonarNorms)) {
       const val = sonarNorms[k];
-      if (typeof val === "number") norms[k] = Math.round(((norms[k] ?? 0) + val) / 2);
+      if (typeof val === "number") {
+        // Prefer Sonar-derived norm; overwrite any existing value.
+        norms[k] = val;
+      }
     }
   }
 
