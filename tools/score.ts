@@ -43,58 +43,6 @@ function applyAgentScoreCard(norms: Norms) {
 
 /* Normalizers */
 
-// coverage from coverage-summary.json (jest json-summary)
-function normCoverage(cov: any): number {
-  try {
-    const pct = cov?.total?.lines?.pct ?? cov?.total?.lines?.percentage ?? 0;
-    return Math.round(Math.max(0, Math.min(100, pct)));
-  } catch {
-    return 0;
-  }
-}
-
-// eslint.json => errors per KLOC -> norm
-function normESLint(eslintJson: any, totalLines: number): number {
-  if (!eslintJson) return 100;
-  const reports = Array.isArray(eslintJson) ? eslintJson : [];
-  const totalMessages = reports.reduce((acc: number, r: any) => acc + (r.messages?.length ?? 0), 0);
-  const kloc = Math.max(0.001, totalLines / 1000);
-  const errorsPerKloc = totalMessages / kloc;
-  return Math.round(Math.max(0, Math.min(100, 100 - errorsPerKloc * 8)));
-}
-
-// semgrep.json => severity-based penalty
-function normSemgrep(semgrepJson: any): number {
-  if (!semgrepJson) return 100;
-  const results = semgrepJson.results ?? semgrepJson;
-  let score = 100;
-  for (const r of results) {
-    const sev = (r.extra?.severity || r.severity || "INFO").toString().toUpperCase();
-    if (["CRITICAL", "HIGH"].includes(sev)) score -= 30;
-    else if (["MEDIUM"].includes(sev)) score -= 10;
-    else score -= 2;
-  }
-  return Math.max(0, score);
-}
-
-// escomplex.json -> average cyclomatic -> norm
-function normComplexity(escomplexJson: any): number {
-  if (!escomplexJson) return 100;
-  let vals: number[] = [];
-  const collect = (obj: any) => {
-    if (!obj || typeof obj !== "object") return;
-    for (const k of Object.keys(obj)) {
-      const v = obj[k];
-      if (k.toLowerCase().includes("cyclomatic") && typeof v === "number") vals.push(v);
-      else if (Array.isArray(v)) v.forEach(collect);
-      else if (typeof v === "object") collect(v);
-    }
-  };
-  collect(escomplexJson);
-  const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 1;
-  return Math.round(Math.max(0, Math.min(100, 100 - 5 * (avg - 1))));
-}
-
 // Sonar metrics: sonar_metrics.json contains measures array
 function readSonarMetrics(sonarJson: any) {
   const out: Record<string, number | string> = {};
@@ -161,10 +109,6 @@ function computeComposite(norms: Norms, weights: Weights): number {
 }
 
 function main(): Norms {
-  const coverage = safeRead("coverage/coverage-summary.json");
-  const eslintJson = safeRead("eslint.json");
-  const semgrepJson = safeRead("semgrep.json");
-  const escomplexJson = safeRead("escomplex.json");
   const filesInfo = safeRead("files_info.json") || { total_lines: 0 };
   const sonarMetricsRaw = safeRead("sonar_metrics.json");
 

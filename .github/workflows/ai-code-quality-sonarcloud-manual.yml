@@ -2,6 +2,9 @@ name: AI Code Quality - SonarCloud (Manual)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - '**'
 
 jobs:
   quality:
@@ -27,9 +30,6 @@ jobs:
       - name: Install project & analysis dependencies
         run: |
           npm ci
-          npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin \
-            typhonjs-escomplex typescript
-          # removed semgrep from npm installs because Semgrep is installed/run via the official action (or via pipx/docker)
 
       - name: TypeScript compile (build project -> dist)
         continue-on-error: true
@@ -63,20 +63,7 @@ jobs:
       - name: Run tests (Jest) with coverage
         run: npx jest --coverage --coverageReporters=json-summary --coverageReporters=lcov || true
 
-      - name: Run ESLint (JSON)
-        run: npx eslint "src/**/*.{ts,tsx,js,jsx}" -f json -o eslint.json || true
 
-      - name: Run Semgrep (SAST) — official action
-        # Official Semgrep action will install and run Semgrep (no need to install with npm)
-        uses: returntocorp/semgrep-action@v1
-        continue-on-error: true
-        with:
-          config: 'p/ci'
-          output: 'semgrep.json'
-          format: 'json'
-
-      - name: Run escomplex (cyclomatic complexity)
-        run: npx typhonjs-escomplex -f json -o escomplex.json "src/**/*.ts" || true
 
       - name: Collect files/lines info
         run: |
@@ -146,7 +133,6 @@ jobs:
             score_breakdown.json
             score_report.json
             sonar_metrics.json
-            semgrep.json
 
       - name: Print composite + detailed breakdown
         run: |
@@ -164,8 +150,4 @@ jobs:
           if [ -f sonar_metrics.json ]; then
             echo "sonar metrics:"
             cat sonar_metrics.json
-          fi
-          if [ -f semgrep.json ]; then
-            echo "semgrep metrics:"
-            cat semgrep.json
           fi
