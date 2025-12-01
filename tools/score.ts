@@ -7,6 +7,7 @@ type AgentScoreCard = {
   fixAttempts?: number;
   issuesFound?: number;
   issuesFixed?: number;
+  compilable?: number;
   [key: string]: any;
 };
 
@@ -25,6 +26,7 @@ function applyAgentScoreCard(norms: Norms) {
   if (!scoreCard) return;
 
   const fieldMap: Record<string, keyof AgentScoreCard> = {
+    compilation: "compilable",
     issuesFound: "issuesFound",
     issuesFixed: "issuesFixed",
     fixAttempts: "fixAttempts"
@@ -118,7 +120,7 @@ function normFromSonarMeasure(measures: Record<string, any>) {
   console.log("[Sonar] security_rating:", measures.security_rating);
 
   const smells = Number(measures.code_smells ?? 0);
-  norms.maintainability = Math.max(0, 100 - (smells * 0.2) - (measures.sqale_index * 0.2));
+  norms.maintainability = Math.max(0, 100 - smells - (measures.sqale_index * 0.2));
   // code_smells: #
   // sqale_index: mins
 
