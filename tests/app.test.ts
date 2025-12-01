@@ -2,7 +2,10 @@ import "dotenv/config";
 import { strict as assert } from "node:assert";
 import test from "node:test";
 
-import { createOrder, getOrder } from "../dist/src/app.js";
+// IMPORTANT:
+// This file is compiled by TypeScript into dist/tests/app.test.js.
+// The relative import below is resolved at runtime from dist/tests to dist/src.
+import { createOrder, getOrder } from "../src/app.js";
 
 const hasPayPalCredentials =
   Boolean(process.env.PAYPAL_CLIENT_ID) &&

@@ -63,7 +63,7 @@ jobs:
       - name: Run Node tests and update AgentScoreCard testsPassRate
         run: |
           # Run the Node test suite and capture output, but do not fail the workflow on test failure
-          node --test tests/app.test.ts > node-test-output.txt 2>&1 || true
+          node --test dist/tests/app.test.js > node-test-output.txt 2>&1 || true
 
           # Parse test counts from the Node test runner output and update tools/AgentScoreCard.json
           node - <<'NODE'
@@ -78,9 +78,10 @@ jobs:
           try {
             const text = fs.readFileSync(OUTPUT_PATH, 'utf8');
 
-            // Lines look like: "ℹ tests 3" and "ℹ pass 3"
-            const testsMatch = text.match(/ℹ tests (\d+)/);
-            const passMatch = text.match(/ℹ pass (\d+)/);
+            // Summary lines typically contain "tests N" and "pass M"
+            // e.g. "ℹ tests 3" / "ℹ pass 3" or similar.
+            const testsMatch = text.match(/tests\s+(\d+)/);
+            const passMatch = text.match(/pass\s+(\d+)/);
 
             if (testsMatch) totalTests = Number(testsMatch[1]) || 0;
             if (passMatch) passedTests = Number(passMatch[1]) || 0;
