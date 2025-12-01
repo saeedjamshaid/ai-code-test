@@ -157,6 +157,7 @@ function main(): Norms {
   // Order: compilation, issuesFound, issuesFixed, autoFixRate, security,
   //        reliability, maintainability, duplication, performance, fixAttempts
   const resultValues = [
+    norms.unitTestPassRate,
     norms.compilation,
     norms.issuesFound,
     norms.issuesFixed,

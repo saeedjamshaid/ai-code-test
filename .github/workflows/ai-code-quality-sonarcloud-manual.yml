@@ -178,14 +178,17 @@ jobs:
       - name: Print composite + detailed breakdown
         run: |
           if [ -f norms.json ]; then
+            echo ""
             echo "Score Card:"
             cat norms.json
           fi
           if [ -f sonar_metrics.json ]; then
+            echo ""
             echo "sonar metrics:"
             cat sonar_metrics.json
           fi
           if [ -f result.json ]; then
+            echo ""
             echo "Results:"
             cat result.json
           fi
