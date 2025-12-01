@@ -4,10 +4,9 @@ import fs from "fs";
 type Norms = Record<string, number>;
 type Weights = Record<string, number>;
 type AgentScoreCard = {
-  autofixSuccessRate?: number;
-  tokenUsage?: number;
-  timeToFirstWorkingSolution?: number;
   fixAttempts?: number;
+  issuesFound?: number;
+  issuesFixed?: number;
   [key: string]: any;
 };
 
@@ -26,9 +25,8 @@ function applyAgentScoreCard(norms: Norms) {
   if (!scoreCard) return;
 
   const fieldMap: Record<string, keyof AgentScoreCard> = {
-    autofixSuccessRate: "autofixSuccessRate",
-    tokenusage: "tokenUsage",
-    timeToFirstWorkingSolution: "timeToFirstWorkingSolution",
+    issuesFound: "issuesFound",
+    issuesFixed: "issuesFixed",
     fixAttempts: "fixAttempts"
   };
 
@@ -152,7 +150,7 @@ function computeComposite(norms: Norms, weights: Weights): number {
   return Math.round(s * 100) / 100;
 }
 
-function main() {
+function main(): Norms {
   const coverage = safeRead("coverage/coverage-summary.json");
   const eslintJson = safeRead("eslint.json");
   const semgrepJson = safeRead("semgrep.json");
@@ -163,14 +161,14 @@ function main() {
   const totalLines = filesInfo?.total_lines ?? 0;
 
   // norms from individual tools
+  // (initialize defaults; individual normalizers can override)
   const norms: Norms = {
     // Correctness
     unitTestPassRate: -1,
     compilation: -1,
-    autofixSuccessRate: -1,
+    issuesFound: -1,
+    issuesFixed: -1,
     // Efficiency
-    tokenusage: -1,
-    timeToFirstWorkingSolution: -1,
     fixAttempts: -1,
     // Quality
     security: -1,
@@ -192,58 +190,12 @@ function main() {
     }
   }
 
-  const categoryWeights: Record<string, Weights> = {
-    correctness: {
-      unitTestPassRate: 40,
-      compilation: 30,
-      autofixSuccessRate: 30
-    },
-    quality: {
-      security: 25,
-      reliability: 20,
-      maintainability: 20,
-      duplication: 20,
-      performance: 15
-    },
-    efficiency: {
-      tokenusage: 35,
-      timeToFirstWorkingSolution: 35,
-      fixAttempts: 30
-    }
-  };
+  // Primary output is just norms; logs are kept for visibility.
+  fs.writeFileSync("norms.json", JSON.stringify(norms, null, 2), "utf8");
+  console.log("Norms:", norms);
 
-  const categoryScores: Record<string, number> = {};
-  for (const [category, weights] of Object.entries(categoryWeights)) {
-    categoryScores[category] = computeComposite(norms, weights);
-  }
-
-  const categoryCount = Object.keys(categoryWeights).length || 1;
-  const score = Math.round(
-    (Object.values(categoryScores).reduce((sum, val) => sum + val, 0) / categoryCount) * 100
-  ) / 100;
-
-  // Write outputs
-  fs.writeFileSync("composite_score.txt", String(score), "utf8");
-
-  // Detailed per-category breakdown for workflow artifact
-  const breakdown = {
-    metrics: norms,
-    categories: categoryScores
-  };
-  fs.writeFileSync("score_breakdown.json", JSON.stringify(breakdown, null, 2), "utf8");
-
-  // Full report for debugging/history
-  const fullReport = {
-    score,
-    norms,
-    categoryWeights,
-    categoryScores,
-    timestamp: new Date().toISOString()
-  };
-  fs.writeFileSync("score_report.json", JSON.stringify(fullReport, null, 2), "utf8");
-
-  console.log("Composite Score:", score);
-  console.log("Per-category breakdown:", breakdown);
+  return norms;
 }
 
-main();
+const norms = main();
+export default norms;
