@@ -185,3 +185,7 @@ jobs:
             echo "sonar metrics:"
             cat sonar_metrics.json
           fi
+          if [ -f result.json ]; then
+            echo "Results:"
+            cat result.json
+          fi

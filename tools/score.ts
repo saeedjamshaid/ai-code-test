@@ -123,23 +123,15 @@ function main(): Norms {
     compilation: -1,
     issuesFound: -1,
     issuesFixed: -1,
-    autoFixRate:0,
-    // Efficiency
-    inputCacheWrite:0,
-    input:0,
-    cacheRead:0,
-    outputTokens:0,
-    tokenusage:0,
-    timeToFirstWorkingSolution:0,
-    fixAttempts: -1,
-    //Cost
-    cost: 0,
+	  autoFixRate:0,
     // Quality
     security: -1,
     reliability: -1,
     maintainability: -1,
     duplication: -1,
-    performance: -1
+    performance: -1,
+    // Efficiency
+    fixAttempts: -1
   };
   
 
@@ -160,7 +152,27 @@ function main(): Norms {
 
   // Primary output is just norms; logs are kept for visibility.
   fs.writeFileSync("norms.json", JSON.stringify(norms, null, 2), "utf8");
-  console.log("Norms:", norms);
+
+  // Write a compact, comma-separated summary line to result.json
+  // Order: compilation, issuesFound, issuesFixed, autoFixRate, security,
+  //        reliability, maintainability, duplication, performance, fixAttempts
+  const resultValues = [
+    norms.compilation,
+    norms.issuesFound,
+    norms.issuesFixed,
+    norms.autoFixRate,
+    norms.security,
+    norms.reliability,
+    norms.maintainability,
+    norms.duplication,
+    norms.performance,
+    norms.fixAttempts
+  ];
+
+  const csvLine = resultValues.join(",");
+  fs.writeFileSync("result.json", csvLine, "utf8");
+
+  console.log("Norms summary written to result.json (CSV):", csvLine);
 
   return norms;
 }
