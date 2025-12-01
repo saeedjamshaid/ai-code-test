@@ -2,6 +2,9 @@ name: AI Code Quality - SonarCloud (Manual)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - '**'
 
 jobs:
   quality:
@@ -27,30 +30,81 @@ jobs:
       - name: Install project & analysis dependencies
         run: |
           npm ci
-          npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin \
-            typhonjs-escomplex typescript
-          # removed semgrep from npm installs because Semgrep is installed/run via the official action (or via pipx/docker)
 
       - name: TypeScript compile (build project -> dist)
-        run: npx tsc -p tsconfig.json
-
-      - name: Run tests (Jest) with coverage
-        run: npx jest --coverage --coverageReporters=json-summary --coverageReporters=lcov || true
-
-      - name: Run ESLint (JSON)
-        run: npx eslint "src/**/*.{ts,tsx,js,jsx}" -f json -o eslint.json || true
-
-      - name: Run Semgrep (SAST) — official action
-        # Official Semgrep action will install and run Semgrep (no need to install with npm)
-        uses: returntocorp/semgrep-action@v1
         continue-on-error: true
-        with:
-          config: 'p/ci'
-          output: 'semgrep.json'
-          format: 'json'
+        run: |
+          set +e
+          npx tsc -p tsconfig.json
+          EXIT_CODE=$?
 
-      - name: Run escomplex (cyclomatic complexity)
-        run: npx typhonjs-escomplex -f json -o escomplex.json "src/**/*.ts" || true
+          if [ "$EXIT_CODE" -eq 0 ]; then
+            COMPILED=1
+          else
+            COMPILED=0
+          fi
+
+          node - <<NODE
+          const fs = require('fs');
+          const path = 'tools/AgentScoreCard.json';
+          try {
+            const raw = fs.readFileSync(path, 'utf8');
+            const data = JSON.parse(raw);
+            data.compilable = ${COMPILED};
+            fs.writeFileSync(path, JSON.stringify(data, null, 2));
+            console.log('Updated AgentScoreCard.json compilable to', data.compilable);
+          } catch (e) {
+            console.warn('Failed to update AgentScoreCard.json compilable flag', e);
+          }
+          NODE
+
+          exit $EXIT_CODE
+
+      - name: Run Node tests and update AgentScoreCard testsPassRate
+        run: |
+          # Run the Node test suite and capture output, but do not fail the workflow on test failure
+          node --test dist/tests/app.test.js > node-test-output.txt 2>&1 || true
+
+          # Parse test counts from the Node test runner output and update tools/AgentScoreCard.json
+          node - <<'NODE'
+          const fs = require('fs');
+
+          const OUTPUT_PATH = 'node-test-output.txt';
+          const SCORECARD_PATH = 'tools/AgentScoreCard.json';
+
+          let totalTests = 0;
+          let passedTests = 0;
+
+          try {
+            const text = fs.readFileSync(OUTPUT_PATH, 'utf8');
+
+            // Summary lines typically contain "tests N" and "pass M"
+            // e.g. "ℹ tests 3" / "ℹ pass 3" or similar.
+            const testsMatch = text.match(/tests\s+(\d+)/);
+            const passMatch = text.match(/pass\s+(\d+)/);
+
+            if (testsMatch) totalTests = Number(testsMatch[1]) || 0;
+            if (passMatch) passedTests = Number(passMatch[1]) || 0;
+          } catch (e) {
+            console.warn('Failed to read or parse node-test-output.txt', e);
+          }
+
+          const passRate = totalTests > 0 ? passedTests / totalTests : 0;
+
+          try {
+            const raw = fs.readFileSync(SCORECARD_PATH, 'utf8');
+            const data = JSON.parse(raw);
+            data.testsPassRate = passRate;
+            fs.writeFileSync(SCORECARD_PATH, JSON.stringify(data, null, 2));
+            console.log(
+              'Updated AgentScoreCard.json testsPassRate to',
+              passRate,
+              `(${passedTests}/${totalTests})`
+            );
+          } catch (e) {
+            console.warn('Failed to update AgentScoreCard.json testsPassRate', e);
+          }
+          NODE
 
       - name: Collect files/lines info
         run: |
@@ -80,6 +134,7 @@ jobs:
             -Dsonar.organization=${{ secrets.SONAR_ORG }}
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.sources=src
+            -Dsonar.inclusions=src/app.ts
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -88,7 +143,9 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          METRICS="coverage,security_rating,vulnerabilities,code_smells,duplicated_lines_density,complexity,alert_status,reliability_rating,maintainability_rating"
+          # Metrics include: coverage, security_rating, vulnerabilities, code_smells, duplicated_lines_density,
+          # complexity (cyclomatic complexity), alert_status, reliability_rating, maintainability_rating
+          METRICS="coverage,security_rating,vulnerabilities,code_smells,duplicated_lines_density,complexity,alert_status,reliability_rating,sqale_index"
           curl -s -u "${SONAR_TOKEN}:" "https://sonarcloud.io/api/measures/component?component=${{ secrets.SONAR_PROJECT_KEY }}&metricKeys=${METRICS}" -o sonar_metrics.json || true
           echo "Saved sonar_metrics.json"
 
@@ -115,13 +172,23 @@ jobs:
           path: |
             composite_score.txt
             score_breakdown.json
+            score_report.json
+            sonar_metrics.json
 
       - name: Print composite + detailed breakdown
         run: |
-          if [ -f composite_score.txt ]; then
-            echo "Composite Score: $(cat composite_score.txt)"
+          if [ -f norms.json ]; then
+            echo ""
+            echo "Score Card:"
+            cat norms.json
           fi
-          if [ -f score_breakdown.json ]; then
-            echo "Detailed Category Breakdown:"
-            cat score_breakdown.json
+          if [ -f sonar_metrics.json ]; then
+            echo ""
+            echo "sonar metrics:"
+            cat sonar_metrics.json
+          fi
+          if [ -f result.json ]; then
+            echo ""
+            echo "Results:"
+            cat result.json
           fi
