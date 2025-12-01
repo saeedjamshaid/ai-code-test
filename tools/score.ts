@@ -1,5 +1,5 @@
 // tools/score.ts
-import fs from "fs";
+import * as fs from "fs";
 
 type Norms = Record<string, number>;
 type Weights = Record<string, number>;
@@ -8,6 +8,7 @@ type AgentScoreCard = {
   issuesFound?: number;
   issuesFixed?: number;
   compilable?: number;
+  testsPassRate?: number;
   [key: string]: any;
 };
 
@@ -26,6 +27,7 @@ function applyAgentScoreCard(norms: Norms) {
   if (!scoreCard) return;
 
   const fieldMap: Record<string, keyof AgentScoreCard> = {
+    unitTestPassRate: "testsPassRate",
     compilation: "compilable",
     issuesFound: "issuesFound",
     issuesFixed: "issuesFixed",
@@ -121,8 +123,17 @@ function main(): Norms {
     compilation: -1,
     issuesFound: -1,
     issuesFixed: -1,
+    autoFixRate:0,
     // Efficiency
+    inputCacheWrite:0,
+    input:0,
+    cacheRead:0,
+    outputTokens:0,
+    tokenusage:0,
+    timeToFirstWorkingSolution:0,
     fixAttempts: -1,
+    //Cost
+    cost: 0,
     // Quality
     security: -1,
     reliability: -1,
@@ -130,6 +141,7 @@ function main(): Norms {
     duplication: -1,
     performance: -1
   };
+  
 
   applyAgentScoreCard(norms);
 

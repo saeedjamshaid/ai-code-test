@@ -3,6 +3,7 @@
     "issuesFixed": 1,
     "fixAttempts": 1,
     "compilable": 0,
+    "testsPassRate": 0,
     "examples": {
       "fixAttempts": 3,
       "issuesFound": 2,

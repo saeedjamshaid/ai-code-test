@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 import {
   ApiError,
   CheckoutPaymentIntent,
@@ -8,6 +10,8 @@ import {
   OrdersController
 } from "@paypal/paypal-server-sdk";
 
+let cachedOrdersController: OrdersController | null = null;
+
 type CreateOrderOptions = {
   amount?: string;
   currencyCode?: string;
@@ -16,17 +20,17 @@ type CreateOrderOptions = {
   preferMinimalResponse?: boolean;
 };
 
-let cachedOrdersController: OrdersController | null = null;
-
 function resolveEnvironment(rawValue: string | undefined | null): Environment {
   const normalized = (rawValue ?? "sandbox").trim().toLowerCase();
+
   if (normalized === "production" || normalized === "live") {
     return Environment.Production;
   }
+
   return Environment.Sandbox;
 }
 
-function parseTimeout(rawTimeout: string | undefined | null): number {
+function parseTimeout(rawTimeout: string | undefined): number {
   const parsed = Number.parseInt(rawTimeout ?? "0", 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
@@ -77,6 +81,7 @@ function getOrdersController(): OrdersController {
 function handlePayPalError(context: string, error: unknown): never {
   if (error instanceof ApiError) {
     console.error(`${context} (status: ${error.statusCode})`);
+
     if (error.body) {
       console.error("Response body:", JSON.stringify(error.body, null, 2));
     }
@@ -84,6 +89,7 @@ function handlePayPalError(context: string, error: unknown): never {
     if (error instanceof CustomError && error.result) {
       console.error("Error name:", error.result.name);
       console.error("Error message:", error.result.message);
+
       if (error.result.details) {
         console.error(
           "Error details:",
@@ -125,7 +131,9 @@ export async function createOrder(
           }
         ]
       },
-      prefer: preferMinimalResponse ? "return=minimal" : "return=representation"
+      prefer: preferMinimalResponse
+        ? "return=minimal"
+        : "return=representation"
     });
 
     return createResponse.result;
@@ -154,6 +162,7 @@ async function runSample(): Promise<void> {
   }
 
   const createdOrder = await createOrder();
+
   const createdOrderId =
     createdOrder && typeof createdOrder === "object"
       ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
