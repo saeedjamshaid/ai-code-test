@@ -130,11 +130,19 @@ function normFromSonarMeasure(measures: Record<string, any>) {
   norms.duplication = Math.max(0, Math.round(100 - dup));
   // duplicated_lines_density: %
   
-  norms.reliability = Math.max(0, 100 - (measures.reliability_rating * 0.2));
-  // reliability_rating: 1 (best) - 5 (worst)
+  const reliabilityRating = Number(measures.reliability_rating ?? 0);
+  norms.reliability = Math.max(
+    0,
+    Math.min(100, ((5 - reliabilityRating) / 4) * 100)
+  );
+  // reliability_rating: 1 (best) - 5 (worst), mapped so 1 -> 100, 5 -> 0
 
-  norms.security = Math.max(0, 100 - (measures.security_rating * 0.2));
-  // security_rating: 1 (best) - 5 (worst)
+  const securityRating = Number(measures.security_rating ?? 0);
+  norms.security = Math.max(
+    0,
+    Math.min(100, ((5 - securityRating) / 4) * 100)
+  );
+  // security_rating: 1 (best) - 5 (worst), mapped so 1 -> 100, 5 -> 0
 
   return norms as Record<string, number>;
 }
