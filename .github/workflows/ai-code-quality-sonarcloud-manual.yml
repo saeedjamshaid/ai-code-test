@@ -32,7 +32,33 @@ jobs:
           # removed semgrep from npm installs because Semgrep is installed/run via the official action (or via pipx/docker)
 
       - name: TypeScript compile (build project -> dist)
-        run: npx tsc -p tsconfig.json
+        continue-on-error: true
+        run: |
+          set +e
+          npx tsc -p tsconfig.json
+          EXIT_CODE=$?
+
+          if [ "$EXIT_CODE" -eq 0 ]; then
+            COMPILED=1
+          else
+            COMPILED=0
+          fi
+
+          node - <<NODE
+          const fs = require('fs');
+          const path = 'tools/AgentScoreCard.json';
+          try {
+            const raw = fs.readFileSync(path, 'utf8');
+            const data = JSON.parse(raw);
+            data.compilable = ${COMPILED};
+            fs.writeFileSync(path, JSON.stringify(data, null, 2));
+            console.log('Updated AgentScoreCard.json compilable to', data.compilable);
+          } catch (e) {
+            console.warn('Failed to update AgentScoreCard.json compilable flag', e);
+          }
+          NODE
+
+          exit $EXIT_CODE
 
       - name: Run tests (Jest) with coverage
         run: npx jest --coverage --coverageReporters=json-summary --coverageReporters=lcov || true
