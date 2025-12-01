@@ -4,6 +4,10 @@ import test from "node:test";
 
 import { createOrder, getOrder } from "../dist/src/app.js";
 
+const hasPayPalCredentials =
+  Boolean(process.env.PAYPAL_CLIENT_ID) &&
+  Boolean(process.env.PAYPAL_CLIENT_SECRET);
+
 test("getOrder throws when orderId is empty", async () => {
   await assert.rejects(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -50,29 +54,36 @@ test("createOrder fails with missing PayPal credentials", async () => {
   }
 });
 
-test("createOrder then getOrder using returned id", async () => {
-  const createdOrder = await createOrder();
-
-  const createdOrderId =
-    createdOrder && typeof createdOrder === "object"
-      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (createdOrder as any).id
-      : undefined;
-
-  assert.ok(createdOrderId, "Expected created order to provide an id");
-
-  const fetchedOrder = await getOrder(createdOrderId as string);
-
-  const fetchedOrderId =
-    fetchedOrder && typeof fetchedOrder === "object"
-      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (fetchedOrder as any).id
-      : undefined;
-
-  assert.equal(
-    fetchedOrderId,
-    createdOrderId,
-    "Fetched order should have the same id as the created order"
+if (!hasPayPalCredentials) {
+  test.skip(
+    "createOrder then getOrder using returned id (skipped: missing PAYPAL credentials)",
+    () => {}
   );
-});
+} else {
+  test("createOrder then getOrder using returned id", async () => {
+    const createdOrder = await createOrder();
+
+    const createdOrderId =
+      createdOrder && typeof createdOrder === "object"
+        ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (createdOrder as any).id
+        : undefined;
+
+    assert.ok(createdOrderId, "Expected created order to provide an id");
+
+    const fetchedOrder = await getOrder(createdOrderId as string);
+
+    const fetchedOrderId =
+      fetchedOrder && typeof fetchedOrder === "object"
+        ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (fetchedOrder as any).id
+        : undefined;
+
+    assert.equal(
+      fetchedOrderId,
+      createdOrderId,
+      "Fetched order should have the same id as the created order"
+    );
+  });
+}
 
