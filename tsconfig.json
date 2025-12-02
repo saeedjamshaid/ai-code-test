@@ -17,6 +17,8 @@
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false
-  }
+  },
+  "include": ["src/**/*", "tests/**/*", "tools/**/*"],
+  "exclude": ["frontend", "backend", "node_modules", "dist"]
 }
 
