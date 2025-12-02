@@ -1,8 +1,8 @@
 {
   "dependencies": {
     "@eslint/eslintrc": "^3.3.1",
-    "@paypal/paypal-server-sdk": "^2.0.0",
-    "fs": "^0.0.1-security"
+    "fs": "^0.0.1-security",
+    "dotenv": "^16.4.5"
   },
   "name": "ai_code_quality_sonarcloud",
   "version": "1.0.0",
