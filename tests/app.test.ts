@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { strict as assert } from "node:assert";
-import test from "node:test";
+import { test } from "node:test";
 
 // IMPORTANT:
 // This file is compiled by TypeScript into dist/tests/app.test.js.
