@@ -1,10 +1,9 @@
-import * as paypal from '@paypal/checkout-server-sdk';
+import * as https from 'https';
+import { URLSearchParams } from 'url';
 
 /**
- * Simple PayPal Orders API integration helpers.
- *
- * These functions are intentionally framework-agnostic so they can be used
- * from NestJS controllers, scripts, or tests without pulling in NestJS here.
+ * Simple PayPal Orders API integration helpers implemented using HTTPS
+ * directly, without any external SDK dependency.
  *
  * Environment variables expected:
  * - PAYPAL_CLIENT_ID
@@ -12,10 +11,14 @@ import * as paypal from '@paypal/checkout-server-sdk';
  * - PAYPAL_MODE (optional: 'live' | 'sandbox', defaults to 'sandbox')
  */
 
-function getEnvironment(): paypal.core.SandboxEnvironment | paypal.core.LiveEnvironment {
+function getPaypalHost(): string {
+  const mode = (process.env.PAYPAL_MODE || 'sandbox').toLowerCase();
+  return mode === 'live' ? 'api-m.paypal.com' : 'api-m.sandbox.paypal.com';
+}
+
+function getPaypalCredentials(): { clientId: string; clientSecret: string } {
   const clientId = process.env.PAYPAL_CLIENT_ID;
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
-  const mode = (process.env.PAYPAL_MODE || 'sandbox').toLowerCase();
 
   if (!clientId || !clientSecret) {
     throw new Error(
@@ -23,21 +26,65 @@ function getEnvironment(): paypal.core.SandboxEnvironment | paypal.core.LiveEnvi
     );
   }
 
-  if (mode === 'live') {
-    return new paypal.core.LiveEnvironment(clientId, clientSecret);
-  }
-
-  // Default to sandbox
-  return new paypal.core.SandboxEnvironment(clientId, clientSecret);
+  return { clientId, clientSecret };
 }
 
-let cachedClient: paypal.core.PayPalHttpClient | null = null;
+function httpRequest<T = any>(options: https.RequestOptions, body?: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      const chunks: Buffer[] = [];
 
-function getClient(): paypal.core.PayPalHttpClient {
-  if (!cachedClient) {
-    cachedClient = new paypal.core.PayPalHttpClient(getEnvironment());
+      res.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+
+      res.on('end', () => {
+        const raw = Buffer.concat(chunks).toString('utf8');
+        try {
+          const parsed = raw ? JSON.parse(raw) : ({} as T);
+          resolve(parsed as T);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    if (body) {
+      req.write(body);
+    }
+
+    req.end();
+  });
+}
+
+async function getAccessToken(): Promise<string> {
+  const host = getPaypalHost();
+  const { clientId, clientSecret } = getPaypalCredentials();
+
+  const params = new URLSearchParams({ grant_type: 'client_credentials' });
+  const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+  const options: https.RequestOptions = {
+    hostname: host,
+    path: '/v1/oauth2/token',
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${auth}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Length': Buffer.byteLength(params.toString()),
+    },
+  };
+
+  const response = await httpRequest<{ access_token: string }>(options, params.toString());
+  if (!response.access_token) {
+    throw new Error('Failed to obtain PayPal access token.');
   }
-  return cachedClient;
+
+  return response.access_token;
 }
 
 /**
@@ -49,11 +96,12 @@ function getClient(): paypal.core.PayPalHttpClient {
 export async function createOrder(
   bodyOverride?: Record<string, any>,
 ): Promise<{ id: string; raw: any }> {
-  const request = new paypal.orders.OrdersCreateRequest();
-  request.prefer('return=representation');
+  const host = getPaypalHost();
+  const accessToken = await getAccessToken();
 
-  request.requestBody(
-    bodyOverride ?? {
+  const body =
+    bodyOverride ??
+    ({
       intent: 'CAPTURE',
       purchase_units: [
         {
@@ -63,15 +111,27 @@ export async function createOrder(
           },
         },
       ],
-    },
-  );
+    } as Record<string, any>);
 
-  const client = getClient();
-  const response = await client.execute(request);
+  const jsonBody = JSON.stringify(body);
+
+  const options: https.RequestOptions = {
+    hostname: host,
+    path: '/v2/checkout/orders',
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(jsonBody),
+      'PayPal-Request-Id': `req-${Date.now()}`,
+    },
+  };
+
+  const response = await httpRequest<any>(options, jsonBody);
 
   return {
-    id: response.result.id,
-    raw: response.result,
+    id: response.id,
+    raw: response,
   };
 }
 
@@ -83,12 +143,19 @@ export async function getOrder(orderId: string): Promise<any> {
     throw new Error('orderId is required to get a PayPal order.');
   }
 
-  const request = new paypal.orders.OrdersGetRequest(orderId);
-  const client = getClient();
-  const response = await client.execute(request);
+  const host = getPaypalHost();
+  const accessToken = await getAccessToken();
 
-  return response.result;
+  const options: https.RequestOptions = {
+    hostname: host,
+    path: `/v2/checkout/orders/${encodeURIComponent(orderId)}`,
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  };
+
+  const response = await httpRequest<any>(options);
+  return response;
 }
-
-
 
