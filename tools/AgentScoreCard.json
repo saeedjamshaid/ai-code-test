@@ -1,7 +1,7 @@
 {
-    "issuesFound": 1,
-    "issuesFixed": 1,
-    "fixAttempts": 1,
+    "issuesFound": 0,
+    "issuesFixed": 0,
+    "fixAttempts": 0,
     "compilable": 0,
     "testsPassRate": 0,
     "examples": {
